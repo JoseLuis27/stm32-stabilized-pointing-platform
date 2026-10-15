@@ -17,6 +17,7 @@
  */
 
 #include <stdint.h>
+#include <stdio.h>
 #include "uart.h"
 
 #if !defined(__SOFT_FP__) && defined(__ARM_FP)
@@ -26,7 +27,7 @@
 int main(void)
 {
 	uart_init();
-	uart_send_string("Hello World");
+	printf("Hello World!\r\n");
 	while(1){
 
 	}

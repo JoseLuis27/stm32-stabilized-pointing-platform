@@ -67,10 +67,14 @@ void uart_send_char(char c){
 }
 
 void uart_send_string(const char *str){
-
 	while(*str != '\0'){
 		uart_send_char(*str);
 		str++;
 	}
+}
+
+int __io_putchar(int ch){
+	uart_send_char((char) ch);
+	return ch;
 }
 
