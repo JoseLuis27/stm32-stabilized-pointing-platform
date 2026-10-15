@@ -56,3 +56,6 @@ Debug/
 Release/
 .DS_Store
 .metadata/
+firmware/firmware Debug.launch
+firmware/.settings/language.settings.xml
+firmware/.settings/org.eclipse.core.resources.prefs
