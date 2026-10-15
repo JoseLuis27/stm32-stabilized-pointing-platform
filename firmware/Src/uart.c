@@ -66,4 +66,11 @@ void uart_send_char(char c){
 	USART2_DR = c;
 }
 
+void uart_send_string(const char *str){
+
+	while(*str != '\0'){
+		uart_send_char(*str);
+		str++;
+	}
+}
 

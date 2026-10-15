@@ -26,7 +26,7 @@
 int main(void)
 {
 	uart_init();
-	uart_send_char('h');
+	uart_send_string("Hello World");
 	while(1){
 
 	}
