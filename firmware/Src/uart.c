@@ -6,7 +6,6 @@
  */
 
 
-
 #include <stdint.h>
 #define RCC_AHB1ENR (*(volatile uint32_t *) 0x40023830)
 #define RCC_APB1ENR (*(volatile uint32_t *)0x40023840)
@@ -16,6 +15,21 @@
 #define USART2_CR1 (*(volatile uint32_t *)0x4000440C)
 #define USART2_SR (*(volatile uint32_t *) 0x40004400)
 #define USART2_DR (*(volatile uint32_t *) 0x40004404)
+#define NVIC_ISER1 (*(volatile uint32_t *) 0xE000E104)
+#define UART_RX_BUF_SIZE 8U
+
+static char rx_buffer[UART_RX_BUF_SIZE];
+static volatile unsigned int rx_head=0;
+static volatile unsigned int rx_tail=0;
+
+static unsigned int rx_next_head(void){return ((rx_head+1)%UART_RX_BUF_SIZE);}
+
+static unsigned int rx_next_tail(void){return ((rx_tail+1)%UART_RX_BUF_SIZE);}
+
+static unsigned int rx_buf_is_full(void){return rx_next_head() == rx_tail;}
+
+static unsigned int rx_buf_is_empty(void){return rx_head == rx_tail;}
+
 
 static uint32_t brr(uint32_t baud, uint32_t MHz){
 	//converting MHz to Hz
@@ -40,8 +54,11 @@ void uart_init(void){
 	GPIOA_AFRL |= (7 << 8) | (7 << 12);
 	// setting the BRR
 	USART2_BRR = brr(115200, 16);
-	// setting up TE, RE,and UE to 1
-	USART2_CR1 |= (1 << 3) | (1 << 2) | (1 << 13);
+	// setting up TE, RE, UE, and RXNEIE to 1
+	USART2_CR1 |= (1 << 3) | (1 << 2) | (1 << 13) | (1 << 5);
+	// turning on NVIC_ISER1 at position 6 since ISER1 ranges from bits [31:0]
+	// which are respectively for interrupt 32-63. 38 is the position for USART2.
+	NVIC_ISER1 = (1 << 6);
 
 }
 
@@ -64,9 +81,21 @@ int __io_putchar(int ch){
 	return ch;
 }
 
-char uart_read_char(void){
-	// polling RXNE to see if DR is ready.
-	while((USART2_SR & (1 << 5)) == 0){}
-	return (char)USART2_DR;
+int uart_read_char(void){
+	if(!rx_buf_is_empty()){
+		char queued_char = rx_buffer[rx_tail];
+		rx_tail = rx_next_tail();
+		return (int)queued_char;
+	}
+	return EOB;
 }
+
+void USART2_IRQHandler(void){
+	char queued_char = (char)USART2_DR;
+	if(!rx_buf_is_full()){
+		rx_buffer[rx_head] = queued_char;
+		rx_head = rx_next_head();
+	}
+}
+
 

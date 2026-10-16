@@ -28,7 +28,7 @@ int main(void)
 {
 	uart_init();
 	while(1){
-		char c = uart_read_char();
+		char c = (char)uart_read_char();
 		if(c == '\r'){
 			uart_send_char('\n');
 		}

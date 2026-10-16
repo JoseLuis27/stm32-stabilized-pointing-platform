@@ -7,6 +7,8 @@
 
 #ifndef UART_H_
 #define UART_H_
+// we defined EOB as End Of Buffer emulating getchar() EOF.
+#define UART_EOB (-1)
 
 
 void uart_init(void);
@@ -15,6 +17,7 @@ void uart_send_char(char c);
 
 void uart_send_string(const char *str);
 
-char uart_read_char(void);
+int uart_read_char(void);
+
 
 #endif /* UART_H_ */
