@@ -27,8 +27,11 @@
 int main(void)
 {
 	uart_init();
-	printf("Hello World!\r\n");
 	while(1){
-
+		char c = uart_read_char();
+		if(c == '\r'){
+			uart_send_char('\n');
+		}
+		uart_send_char(c);
 	}
 }
