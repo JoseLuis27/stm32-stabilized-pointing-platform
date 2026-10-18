@@ -1,6 +1,5 @@
 # STM32 Stabilized Pointing Platform
 
-<ONE_OR_TWO_SENTENCES: what it is and what it will do when finished>
 This device is a 2-axis pan tilt where the top stays stabilized using an IMU to measure the movement and the servos to correct the discrepancies.
 
 ## Status
