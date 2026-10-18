@@ -24,14 +24,19 @@
   #warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
 #endif
 
+
+
 int main(void)
 {
 	uart_init();
 	while(1){
-		char c = (char)uart_read_char();
-		if(c == '\r'){
-			uart_send_char('\n');
+		int c_num = uart_read_char();
+		if(c_num != UART_EOB ){
+			char ch = (char)c_num;
+			if(ch == '\r'){
+				uart_send_char('\n');
+			}
+			uart_send_char(ch);
 		}
-		uart_send_char(c);
 	}
 }
