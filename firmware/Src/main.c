@@ -19,24 +19,30 @@
 #include <stdint.h>
 #include <stdio.h>
 #include "uart.h"
+#include "i2c.h"
 
 #if !defined(__SOFT_FP__) && defined(__ARM_FP)
   #warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
 #endif
 
 
+static void echo_char(void){
+	int c_num = uart_read_char();
+
+	if(c_num != UART_EOB ){
+		char ch = (char)c_num;
+		if(ch == '\r'){
+			uart_send_char('\n');
+		}
+		uart_send_char(ch);
+	}
+}
 
 int main(void)
 {
 	uart_init();
+	i2c_init();
 	while(1){
-		int c_num = uart_read_char();
-		if(c_num != UART_EOB ){
-			char ch = (char)c_num;
-			if(ch == '\r'){
-				uart_send_char('\n');
-			}
-			uart_send_char(ch);
-		}
+		echo_char();
 	}
 }
