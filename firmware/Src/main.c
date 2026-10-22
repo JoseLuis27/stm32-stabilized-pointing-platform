@@ -42,7 +42,9 @@ int main(void)
 {
 	uart_init();
 	i2c_init();
+	printf("%d \r\n", i2c1_read_register(0x6A, 0x0F));
 	while(1){
 		echo_char();
+
 	}
 }
