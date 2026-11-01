@@ -20,10 +20,17 @@
 #include <stdio.h>
 #include "uart.h"
 #include "i2c.h"
+// IMU register addresses
 #define IMU_I2C_ADDRESS (0x6A)
 #define IMU_CTRL1_XL_ADDRESS (0x10)
+#define IMU_CTRL2_G_ADDRESS (0x11)
+// IMU Register values
 #define IMU_CTRL1_XL_ODR_833_HZ (7 << 4)
 #define IMU_CTRL1_XL_FS_4_G (0 << 2)
+#define IMU_CTRL2_G_ODR_833_HZ (7 << 4)
+#define IMU_CTRL2_G_FS_250_DPS (0 << 2)
+#define IMU_CTRL2_G_FS_500_DPS (1 << 0)
+
 
 
 #if !defined(__SOFT_FP__) && defined(__ARM_FP)
@@ -47,10 +54,16 @@ int main(void)
 {
 	uart_init();
 	i2c_init();
+	// writing to accelerometer
 	i2c1_write_register(IMU_I2C_ADDRESS, IMU_CTRL1_XL_ADDRESS, (IMU_CTRL1_XL_ODR_833_HZ | IMU_CTRL1_XL_FS_4_G));
-	printf("%d \r\n", i2c1_read_register(IMU_I2C_ADDRESS, IMU_CTRL1_XL_ADDRESS));
+	// writing to gyroscope
+	i2c1_write_register(IMU_I2C_ADDRESS, IMU_CTRL2_G_ADDRESS, (IMU_CTRL2_G_ODR_833_HZ  | IMU_CTRL2_G_FS_500_DPS));
+	printf("0x%02X \r\n", i2c1_read_register(IMU_I2C_ADDRESS, IMU_CTRL1_XL_ADDRESS));
+	printf("0x%02X \r\n", i2c1_read_register(IMU_I2C_ADDRESS, IMU_CTRL2_G_ADDRESS));
 	while(1){
 		echo_char();
-
 	}
 }
+
+
+
