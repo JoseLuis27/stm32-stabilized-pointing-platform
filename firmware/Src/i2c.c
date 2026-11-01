@@ -26,12 +26,17 @@
  */
 
 #include <stdint.h>
+// RCC register addresses
 #define RCC_AHB1ENR (*(volatile uint32_t *) 0x40023830)
 #define RCC_APB1ENR (*(volatile uint32_t *)0x40023840)
+
+//GPIOB register addresses
 #define GPIOB_MODER (*(volatile uint32_t *) 0x40020400)
 #define GPIOB_IDR (*(volatile uint32_t *) 0x40020410)
 #define GPIOB_AFRH (*(volatile uint32_t *) 0x40020424)
 #define GPIOB_OTYPER (*(volatile uint32_t *) 0x40020404)
+
+// I2C1 register addresses
 #define I2C1_CR2 (*(volatile uint32_t *) 0x40005404)
 #define I2C1_CCR (*(volatile uint32_t *) 0x4000541C)
 #define I2C1_TRISE (*(volatile uint32_t *) 0x40005420)
@@ -81,10 +86,10 @@ static void i2c1_controller_mode_init(void){
 
 static void i2c1_reset_peripheral(void){
 
-	uint8_t is_pulling_high = (GPIOB_IDR & ((1 << 8) | (1 << 9))) == ((1 << 8) | (1 << 9));
+	uint8_t is_idle_high = (GPIOB_IDR & ((1 << 8) | (1 << 9))) == ((1 << 8) | (1 << 9));
 	uint8_t is_busy = ((I2C1_SR2 & (1 << 1)) == (1 << 1));
 
-	if(is_pulling_high && is_busy){
+	if(is_idle_high && is_busy){
 		// turn on SWRST
 		I2C1_CR1 |= (1 << 15);
 		// turn off SWRST
@@ -98,6 +103,7 @@ static void i2c1_enable_peripheral(void){
 	I2C1_CR1 |= (1 << 0);
 }
 
+
 static void i2c1_start_sent(void){
 	// set the START condition
 	I2C1_CR1 |= (1 << 8);
@@ -108,7 +114,7 @@ static void i2c1_start_sent(void){
 static void i2c1_address_acked(uint8_t target_address){
 	// write the target address to DR
 	I2C1_DR = target_address;
-	// polling ADDR
+	// polling ADDR unitl it pulls high
 	while((I2C1_SR1 & (1 << 1)) == 0){}
 }
 
@@ -116,15 +122,15 @@ static void i2c1_addr_flag_cleared(void){
 	// read SR2 to clear ADDR flag
 	I2C1_SR2;
 }
-static void i2c1_write_sub_address(uint8_t sub_address){
-	// polling for TxE is 1
+static void i2c1_byte_sent(uint8_t byte){
+	// polling for TxE until it pulls high
 	while((I2C1_SR1 & (1 << 7)) == 0){}
-	I2C1_DR = sub_address;
-	//polling for BTF is 1
+	I2C1_DR = byte;
+	//polling for BTF until it pulls high
 	while((I2C1_SR1 & (1 << 2)) == 0){}
 }
 
-static void i2c1_stop_sent(void){
+static void i2c1_single_byte_stop_requested(void){
 	// clear ACK
 	I2C1_CR1 &= ~(1 << 10);
 	i2c1_addr_flag_cleared();
@@ -133,13 +139,22 @@ static void i2c1_stop_sent(void){
 }
 
 static uint8_t i2c1_read_dr(void){
-	// polling RXNE until it pulls low
+	// polling RXNE until it pulls high
 	while((I2C1_SR1 & (1 << 6)) == 0){}
 	// return DR value
 	return I2C1_DR;
 }
 
+static void i2c1_stop_bit_cleared(void){
+	// polling until STOP hardware clears stop
+	while ((I2C1_CR1 & (1 << 9)) != 0){}
+}
 
+static void i2c1_stop_sent(void){
+	// set STOP
+	I2C1_CR1 |= (1 << 9);
+	i2c1_stop_bit_cleared();
+}
 void i2c_init(void){
 
 	i2c1_rcc_init();
@@ -150,23 +165,37 @@ void i2c_init(void){
 
 }
 
+/* Single-byte read: LSM6DSO32 Table 14 frame,
+	RM0390 Fig. 275 (transmit part) and Fig. 276 (receive part). */
 uint8_t i2c1_read_register(uint8_t target_address, uint8_t register_address){
 
 	uint8_t write_byte = (target_address << 1);
 	uint8_t read_byte = (write_byte | (1 << 0));
+	i2c1_start_sent(); // ST (EV5: wait SB)
+	i2c1_address_acked(write_byte); // SAD+W, SAK (clears EV5, waits EV6)
+	i2c1_addr_flag_cleared(); // (clears EV6: read SR2)
+	i2c1_byte_sent(register_address); // SUB, SAK  (EV8_1: wait TXE, write & EV8_2: wait BTF, then SR instead of P)
+	i2c1_start_sent(); // SR (EV5: wait SB)
+	i2c1_address_acked(read_byte); // SAD+R, SAK (clears EV5, waits EV6)
+	i2c1_single_byte_stop_requested(); //sets up NMAK, SP (P) hardware send them after DATA
+	uint8_t byte = i2c1_read_dr(); // DATA (EV7: wait RXNE, read DR)
+	i2c1_stop_bit_cleared(); // NMAK, SP done ( hardware cleared STOP)
 
-	i2c1_start_sent();
-	i2c1_address_acked(write_byte);
-	i2c1_addr_flag_cleared();
-	i2c1_write_sub_address(register_address);
-	i2c1_start_sent();
-	i2c1_address_acked(read_byte);
-	i2c1_stop_sent();
-	return i2c1_read_dr();
+	return byte;
 
 }
 
-
+/* Single-byte write: LSM6DSO32 Table 12 frame,
+	RM0390 Fig. 275 (transmit part). */
+void i2c1_write_register(uint8_t target_address, uint8_t register_address, uint8_t register_value){
+	uint8_t write_byte = (target_address << 1);
+	i2c1_start_sent();// ST (EV5: wait SB)
+	i2c1_address_acked(write_byte); // SAD+W, SAK (clears EV5, waits EV6)
+	i2c1_addr_flag_cleared(); // (clears EV6: read SR2)
+	i2c1_byte_sent(register_address);  // SUB, SAK (wait TXE, write, wait BTF)
+	i2c1_byte_sent(register_value);  // DATA, SAK (wait TXE, write, wait BTF)
+	i2c1_stop_sent(); // SP (EV8_2, P: Program stop request and waits until hardware clears it)
+}
 
 
 

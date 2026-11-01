@@ -20,6 +20,11 @@
 #include <stdio.h>
 #include "uart.h"
 #include "i2c.h"
+#define IMU_I2C_ADDRESS (0x6A)
+#define IMU_CTRL1_XL_ADDRESS (0x10)
+#define IMU_CTRL1_XL_ODR_833_HZ (7 << 4)
+#define IMU_CTRL1_XL_FS_4_G (0 << 2)
+
 
 #if !defined(__SOFT_FP__) && defined(__ARM_FP)
   #warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
@@ -42,7 +47,8 @@ int main(void)
 {
 	uart_init();
 	i2c_init();
-	printf("%d \r\n", i2c1_read_register(0x6A, 0x0F));
+	i2c1_write_register(IMU_I2C_ADDRESS, IMU_CTRL1_XL_ADDRESS, (IMU_CTRL1_XL_ODR_833_HZ | IMU_CTRL1_XL_FS_4_G));
+	printf("%d \r\n", i2c1_read_register(IMU_I2C_ADDRESS, IMU_CTRL1_XL_ADDRESS));
 	while(1){
 		echo_char();
 
