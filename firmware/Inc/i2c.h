@@ -14,4 +14,6 @@ uint8_t i2c1_read_register(uint8_t target_address, uint8_t register_address);
 
 void i2c1_write_register(uint8_t target_address, uint8_t register_address, uint8_t register_value);
 
+void i2c1_read_registers(uint8_t target_address, uint8_t register_address, uint8_t *buffer, uint8_t n);
+
 #endif /* I2C_H_ */

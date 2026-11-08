@@ -16,7 +16,7 @@
 #define USART2_SR (*(volatile uint32_t *) 0x40004400)
 #define USART2_DR (*(volatile uint32_t *) 0x40004404)
 #define NVIC_ISER1 (*(volatile uint32_t *) 0xE000E104)
-#define UART_RX_BUF_SIZE 8U
+#define UART_RX_BUF_SIZE (8U)
 #define UART_EOB (-1)
 
 static char rx_buffer[UART_RX_BUF_SIZE];

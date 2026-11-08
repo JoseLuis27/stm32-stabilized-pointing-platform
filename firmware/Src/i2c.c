@@ -26,6 +26,7 @@
  */
 
 #include <stdint.h>
+#include <assert.h>
 // RCC register addresses
 #define RCC_AHB1ENR (*(volatile uint32_t *) 0x40023830)
 #define RCC_APB1ENR (*(volatile uint32_t *)0x40023840)
@@ -107,14 +108,14 @@ static void i2c1_enable_peripheral(void){
 static void i2c1_start_sent(void){
 	// set the START condition
 	I2C1_CR1 |= (1 << 8);
-	//polling SB
+	//polling SB until bit is set
 	while((I2C1_SR1 & (1 << 0)) == 0){}
 }
 
 static void i2c1_address_acked(uint8_t target_address){
 	// write the target address to DR
 	I2C1_DR = target_address;
-	// polling ADDR unitl it pulls high
+	// polling ADDR until bit is set
 	while((I2C1_SR1 & (1 << 1)) == 0){}
 }
 
@@ -122,27 +123,16 @@ static void i2c1_addr_flag_cleared(void){
 	// read SR2 to clear ADDR flag
 	I2C1_SR2;
 }
-static void i2c1_byte_sent(uint8_t byte){
-	// polling for TxE until it pulls high
-	while((I2C1_SR1 & (1 << 7)) == 0){}
-	I2C1_DR = byte;
-	//polling for BTF until it pulls high
+
+static void i2c1_btf_bit_set(void){
+	//polling until BTF bit is set
 	while((I2C1_SR1 & (1 << 2)) == 0){}
+
 }
 
-static void i2c1_single_byte_stop_requested(void){
-	// clear ACK
-	I2C1_CR1 &= ~(1 << 10);
-	i2c1_addr_flag_cleared();
+static void i2c1_stop_bit_enabled(void){
 	// set STOP
 	I2C1_CR1 |= (1 << 9);
-}
-
-static uint8_t i2c1_read_dr(void){
-	// polling RXNE until it pulls high
-	while((I2C1_SR1 & (1 << 6)) == 0){}
-	// return DR value
-	return I2C1_DR;
 }
 
 static void i2c1_stop_bit_cleared(void){
@@ -150,11 +140,42 @@ static void i2c1_stop_bit_cleared(void){
 	while ((I2C1_CR1 & (1 << 9)) != 0){}
 }
 
-static void i2c1_stop_sent(void){
-	// set STOP
-	I2C1_CR1 |= (1 << 9);
-	i2c1_stop_bit_cleared();
+static void i2c1_ack_bit_enabled(void){
+	// ACK bit is enabled (MAK)
+	I2C1_CR1 |= (1 << 10);
 }
+
+static void i2c1_ack_bit_disabled(void){
+	// ACK bit is cleared (NMAK)
+	I2C1_CR1 &= ~(1 << 10);
+}
+
+
+static void i2c1_byte_sent(uint8_t byte){
+	// polling until TxE bit is set
+	while((I2C1_SR1 & (1 << 7)) == 0){}
+	I2C1_DR = byte;
+	//polling until BTF bit is set
+	i2c1_btf_bit_set();
+}
+
+static void i2c1_single_byte_stop_requested(void){
+	// clear ACK
+	i2c1_ack_bit_disabled();
+	i2c1_addr_flag_cleared();
+	// set STOP
+	i2c1_stop_bit_enabled();
+}
+
+static uint8_t i2c1_read_dr(void){
+	// polling RXNE until bit is set
+	while((I2C1_SR1 & (1 << 6)) == 0){}
+	// return DR value
+	return I2C1_DR;
+}
+
+
+
 void i2c_init(void){
 
 	i2c1_rcc_init();
@@ -184,6 +205,37 @@ uint8_t i2c1_read_register(uint8_t target_address, uint8_t register_address){
 	return byte;
 
 }
+/* Multi-byte read: LSM6DSO32 Table 15 frame,
+	RM0390 Fig. 275 (transmit part) and Fig. 276 (receive part). */
+void i2c1_read_registers(uint8_t target_address, uint8_t register_address, uint8_t *buffer, uint8_t n){
+	assert(n > 2);
+	uint8_t write_byte = (target_address << 1);
+	uint8_t read_byte = (write_byte | (1 << 0));
+
+	i2c1_start_sent(); // ST (EV5: wait SB)
+	i2c1_address_acked(write_byte); // SAD+W, SAK (clears EV5, waits EV6)
+	i2c1_addr_flag_cleared(); // (clears EV6: read SR2)
+	i2c1_byte_sent(register_address); // SUB, SAK  (EV8_1: wait TXE, write & EV8_2: wait BTF, then SR instead of P)
+	i2c1_start_sent(); // SR (EV5: wait SB)
+	i2c1_address_acked(read_byte); // SAD+R, SAK (clears EV5, waits EV6)
+	i2c1_ack_bit_enabled(); // MAK
+	i2c1_addr_flag_cleared();
+	for(uint8_t i = 0; i < (n-3); i++){
+		buffer[i] = i2c1_read_dr(); // DATA
+	}
+	// N > 2-byte reception stop procedure
+	i2c1_btf_bit_set();
+	i2c1_ack_bit_disabled();
+	// N-2 Data read
+	buffer[n - 3] = i2c1_read_dr();
+	i2c1_btf_bit_set();
+	i2c1_stop_bit_enabled();
+	// N-1 and N Data read
+	buffer[n - 2] = i2c1_read_dr();
+	buffer[n - 1] = i2c1_read_dr();
+	i2c1_stop_bit_cleared();
+}
+
 
 /* Single-byte write: LSM6DSO32 Table 12 frame,
 	RM0390 Fig. 275 (transmit part). */
@@ -194,8 +246,10 @@ void i2c1_write_register(uint8_t target_address, uint8_t register_address, uint8
 	i2c1_addr_flag_cleared(); // (clears EV6: read SR2)
 	i2c1_byte_sent(register_address);  // SUB, SAK (wait TXE, write, wait BTF)
 	i2c1_byte_sent(register_value);  // DATA, SAK (wait TXE, write, wait BTF)
-	i2c1_stop_sent(); // SP (EV8_2, P: Program stop request and waits until hardware clears it)
+	i2c1_stop_bit_enabled(); // SP (EV8_2, P: Program stop request)
+	i2c1_stop_bit_cleared(); // waits until hardware clears it
 }
+
 
 
 

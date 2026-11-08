@@ -24,18 +24,70 @@
 #define IMU_I2C_ADDRESS (0x6A)
 #define IMU_CTRL1_XL_ADDRESS (0x10)
 #define IMU_CTRL2_G_ADDRESS (0x11)
+#define IMU_CTRL3_C_ADDRESS (0x12)
 // IMU Register values
+// accelerometer
 #define IMU_CTRL1_XL_ODR_833_HZ (7 << 4)
 #define IMU_CTRL1_XL_FS_4_G (0 << 2)
+// gyroscope
 #define IMU_CTRL2_G_ODR_833_HZ (7 << 4)
 #define IMU_CTRL2_G_FS_250_DPS (0 << 2)
-#define IMU_CTRL2_G_FS_500_DPS (1 << 0)
+#define IMU_CTRL2_G_FS_500_DPS (1 << 2)
+// control register 3
+#define IMU_CTRL3_C_BDU (1 << 6)
+#define IMU_CTRL3_C_IF_INC (1 << 2)
 
+// IMU accelerometer output addresses
+#define IMU_OUTX_L_A_ADDRESS (0x28)
+#define IMU_OUTX_L_G_ADDRESS (0x22)
 
+// IMU sensitivity
+// Accelerometer values micro-g per LSB
+#define IMU_LA_S_4_G (122)
+#define IMU_LA_S_8_G (244)
+#define IMU_LA_S_16_G (488)
+#define IMU_LA_S_32_G (976)
+// Gyroscope values micro-dps per LSB
+#define IMU_G_S_125_DPS (4375)
+#define IMU_G_S_250_DPS (8750)
+#define IMU_G_S_500_DPS (17500)
+#define IMU_G_S_1000_DPS (35000)
+// need to make the int 64 bit so it can hold values in 2k dps
+#define IMU_G_S_2000_DPS (70000)
+
+// buffer sizes
+#define IMU_RAW_BYTES_SIZE (12U)
+#define IMU_RAW_AXES_SIZE (IMU_RAW_BYTES_SIZE / 2)
+#define IMU_AXES_PER_SENSOR (IMU_RAW_AXES_SIZE / 2)
+
+// buffers initialized
+static uint8_t imu_raw_bytes[IMU_RAW_BYTES_SIZE];
+static int16_t imu_raw_axes[IMU_RAW_AXES_SIZE];
+//arrays
+static int32_t imu_real_accel_axes[IMU_AXES_PER_SENSOR];
+static int32_t imu_real_gyro_axes[IMU_AXES_PER_SENSOR];
 
 #if !defined(__SOFT_FP__) && defined(__ARM_FP)
   #warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
 #endif
+
+
+static void imu_real_axes_converted(int32_t sens_val, int32_t *real_axes, int16_t *raw_axes){
+
+	for(uint8_t i = 0; i < IMU_AXES_PER_SENSOR; i++){
+		// counts times micro-units per LSB
+		real_axes[i] = (raw_axes[i] * sens_val)/1000;
+	}
+}
+
+static void imu_raw_axes_built(uint8_t *raw_bytes, int16_t *raw_axes){
+	for(uint8_t i = 0; i < IMU_RAW_AXES_SIZE; i++){
+		uint8_t low = raw_bytes[i * 2];
+		int16_t high = (raw_bytes[(i * 2) + 1] << 8);
+
+		raw_axes[i] = (high | low);
+	}
+}
 
 
 static void echo_char(void){
@@ -50,18 +102,41 @@ static void echo_char(void){
 	}
 }
 
+void delay(void) {
+
+	for(volatile uint32_t i=0; i<1000000; i++) {}
+}
+
 int main(void)
 {
 	uart_init();
 	i2c_init();
+	// writing to control register 3
+	i2c1_write_register(IMU_I2C_ADDRESS, IMU_CTRL3_C_ADDRESS, (IMU_CTRL3_C_BDU | IMU_CTRL3_C_IF_INC));
 	// writing to accelerometer
 	i2c1_write_register(IMU_I2C_ADDRESS, IMU_CTRL1_XL_ADDRESS, (IMU_CTRL1_XL_ODR_833_HZ | IMU_CTRL1_XL_FS_4_G));
 	// writing to gyroscope
 	i2c1_write_register(IMU_I2C_ADDRESS, IMU_CTRL2_G_ADDRESS, (IMU_CTRL2_G_ODR_833_HZ  | IMU_CTRL2_G_FS_500_DPS));
-	printf("0x%02X \r\n", i2c1_read_register(IMU_I2C_ADDRESS, IMU_CTRL1_XL_ADDRESS));
-	printf("0x%02X \r\n", i2c1_read_register(IMU_I2C_ADDRESS, IMU_CTRL2_G_ADDRESS));
+
+
 	while(1){
 		echo_char();
+
+		i2c1_read_registers(IMU_I2C_ADDRESS, IMU_OUTX_L_G_ADDRESS, imu_raw_bytes, IMU_RAW_BYTES_SIZE);
+
+		imu_raw_axes_built(imu_raw_bytes, imu_raw_axes);
+
+		imu_real_axes_converted(IMU_G_S_500_DPS , imu_real_gyro_axes, imu_raw_axes);
+		imu_real_axes_converted(IMU_LA_S_4_G, imu_real_accel_axes, &imu_raw_axes[3]);
+		delay();
+		printf("Accel X: %ld  \r\n", imu_real_accel_axes[0]);
+		printf("Accel Y: %ld  \r\n", imu_real_accel_axes[1]);
+		printf("Accel Z: %ld  \r\n", imu_real_accel_axes[2]);
+		printf("\r\n");
+		printf("Gyro X: %ld  \r\n", imu_real_gyro_axes[0]);
+		printf("Gyro Y: %ld  \r\n", imu_real_gyro_axes[1]);
+		printf("Gyro Z: %ld  \r\n", imu_real_gyro_axes[2]);
+		printf("\r\n");
 	}
 }
 
