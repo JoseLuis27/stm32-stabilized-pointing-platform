@@ -20,6 +20,8 @@
 #include <stdio.h>
 #include "uart.h"
 #include "i2c.h"
+#include "timer.h"
+#include "debug_pin.h"
 // IMU register addresses
 #define IMU_I2C_ADDRESS (0x6A)
 #define IMU_CTRL1_XL_ADDRESS (0x10)
@@ -109,34 +111,18 @@ void delay(void) {
 
 int main(void)
 {
+	timer_init();
+	debug_pin_init();
 	uart_init();
-	i2c_init();
-	// writing to control register 3
-	i2c1_write_register(IMU_I2C_ADDRESS, IMU_CTRL3_C_ADDRESS, (IMU_CTRL3_C_BDU | IMU_CTRL3_C_IF_INC));
-	// writing to accelerometer
-	i2c1_write_register(IMU_I2C_ADDRESS, IMU_CTRL1_XL_ADDRESS, (IMU_CTRL1_XL_ODR_833_HZ | IMU_CTRL1_XL_FS_4_G));
-	// writing to gyroscope
-	i2c1_write_register(IMU_I2C_ADDRESS, IMU_CTRL2_G_ADDRESS, (IMU_CTRL2_G_ODR_833_HZ  | IMU_CTRL2_G_FS_500_DPS));
+
 
 
 	while(1){
 		echo_char();
 
-		i2c1_read_registers(IMU_I2C_ADDRESS, IMU_OUTX_L_G_ADDRESS, imu_raw_bytes, IMU_RAW_BYTES_SIZE);
-
-		imu_raw_axes_built(imu_raw_bytes, imu_raw_axes);
-
-		imu_real_axes_converted(IMU_G_S_500_DPS , imu_real_gyro_axes, imu_raw_axes);
-		imu_real_axes_converted(IMU_LA_S_4_G, imu_real_accel_axes, &imu_raw_axes[3]);
-		delay();
-		printf("Accel X: %ld  \r\n", imu_real_accel_axes[0]);
-		printf("Accel Y: %ld  \r\n", imu_real_accel_axes[1]);
-		printf("Accel Z: %ld  \r\n", imu_real_accel_axes[2]);
-		printf("\r\n");
-		printf("Gyro X: %ld  \r\n", imu_real_gyro_axes[0]);
-		printf("Gyro Y: %ld  \r\n", imu_real_gyro_axes[1]);
-		printf("Gyro Z: %ld  \r\n", imu_real_gyro_axes[2]);
-		printf("\r\n");
+		if(tim6_read_tick_count()%500 == 0){
+			debug_pin_toggle();
+		}
 	}
 }
 
