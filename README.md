@@ -6,7 +6,7 @@ This device is a 2-axis pan tilt where the top stays stabilized using an IMU to 
 
 - [x] Phase 1 — Bare-metal GPIO (LED + button)
 - [x] Phase 2 — Interrupt-driven UART driver with ring buffer
-- [ ] Phase 3 — I2C IMU driver
+- [x] Phase 3 — I2C IMU driver
 - [ ] Phase 4 — Timers & PWM servo control
 - [ ] Phase 5 — Sensor fusion
 - [ ] Phase 6 — PID control
