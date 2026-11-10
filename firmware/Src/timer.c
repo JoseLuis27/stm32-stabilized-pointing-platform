@@ -7,6 +7,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include "debug_pin.h"
 
 #define RCC_APB1ENR (*(volatile uint32_t *)0x40023840)
 #define TIM6_CR1 (*(volatile uint32_t *) 0x40001000)
@@ -49,7 +50,6 @@ void timer_init(void){
 }
 
 uint16_t tim6_read_tick_count(void){
-
 	return tick_count;
 }
 
@@ -59,4 +59,6 @@ void TIM6_DAC_IRQHandler(void){
 	if(tick_count > 65000){
 			tick_count -= 65000;
 	}
+	debug_pin_toggle();
+
 }

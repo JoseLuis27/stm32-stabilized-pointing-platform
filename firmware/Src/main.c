@@ -104,10 +104,7 @@ static void echo_char(void){
 	}
 }
 
-void delay(void) {
 
-	for(volatile uint32_t i=0; i<1000000; i++) {}
-}
 
 int main(void)
 {
@@ -120,9 +117,6 @@ int main(void)
 	while(1){
 		echo_char();
 
-		if(tim6_read_tick_count()%500 == 0){
-			debug_pin_toggle();
-		}
 	}
 }
 
