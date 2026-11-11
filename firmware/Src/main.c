@@ -71,6 +71,8 @@ static int16_t imu_raw_axes[IMU_RAW_AXES_SIZE];
 static int32_t imu_real_accel_axes[IMU_AXES_PER_SENSOR];
 static int32_t imu_real_gyro_axes[IMU_AXES_PER_SENSOR];
 
+static int16_t prev_tick_count = 0;
+
 #if !defined(__SOFT_FP__) && defined(__ARM_FP)
   #warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
 #endif
@@ -121,18 +123,20 @@ int main(void)
 	i2c1_write_register(IMU_I2C_ADDRESS, IMU_CTRL1_XL_ADDRESS, (IMU_CTRL1_XL_ODR_833_HZ | IMU_CTRL1_XL_FS_4_G));
 	// writing to gyroscope
 	i2c1_write_register(IMU_I2C_ADDRESS, IMU_CTRL2_G_ADDRESS, (IMU_CTRL2_G_ODR_833_HZ  | IMU_CTRL2_G_FS_500_DPS));
+	prev_tick_count = tim6_read_tick_count();
 
 	while(1){
 		echo_char();
+		int16_t curr_tick_count = tim6_read_tick_count();
+		if((curr_tick_count - prev_tick_count) != 0){
+			prev_tick_count = curr_tick_count;
+			i2c1_read_registers(IMU_I2C_ADDRESS, IMU_OUTX_L_G_ADDRESS, imu_raw_bytes, IMU_RAW_BYTES_SIZE);
 
-		i2c1_read_registers(IMU_I2C_ADDRESS, IMU_OUTX_L_G_ADDRESS, imu_raw_bytes, IMU_RAW_BYTES_SIZE);
+			imu_raw_axes_built(imu_raw_bytes, imu_raw_axes);
 
-		imu_raw_axes_built(imu_raw_bytes, imu_raw_axes);
-
-		imu_real_axes_converted(IMU_G_S_500_DPS , imu_real_gyro_axes, imu_raw_axes);
-		imu_real_axes_converted(IMU_LA_S_4_G, imu_real_accel_axes, &imu_raw_axes[3]);
-
-
+			imu_real_axes_converted(IMU_G_S_500_DPS , imu_real_gyro_axes, imu_raw_axes);
+			imu_real_axes_converted(IMU_LA_S_4_G, imu_real_accel_axes, &imu_raw_axes[3]);
+		}
 
 	}
 }

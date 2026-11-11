@@ -49,15 +49,10 @@ void timer_init(void){
 }
 
 uint16_t tim6_read_tick_count(void){
-	if(tick_count > 0){
-		tick_count = 0;
-		return 1;
-	}
-	return 0;
+	return tick_count;
 }
 
 void TIM6_DAC_IRQHandler(void){
 	TIM6_SR &= ~(1 << 0);
 	tick_count++;
-
 }
