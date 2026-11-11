@@ -27,6 +27,7 @@
 
 #include <stdint.h>
 #include <assert.h>
+#include "dwt.h"
 // RCC register addresses
 #define RCC_AHB1ENR (*(volatile uint32_t *) 0x40023830)
 #define RCC_APB1ENR (*(volatile uint32_t *)0x40023840)
@@ -36,6 +37,8 @@
 #define GPIOB_IDR (*(volatile uint32_t *) 0x40020410)
 #define GPIOB_AFRH (*(volatile uint32_t *) 0x40020424)
 #define GPIOB_OTYPER (*(volatile uint32_t *) 0x40020404)
+#define GPIOB_BSRR (*(volatile uint32_t *) 0x40020418)
+
 
 // I2C1 register addresses
 #define I2C1_CR2 (*(volatile uint32_t *) 0x40005404)
@@ -47,6 +50,8 @@
 #define I2C1_DR (*(volatile uint32_t *) 0x40005410)
 
 
+
+
 static void i2c1_rcc_init(void){
 	// turn on the GPIOB clock
 	RCC_AHB1ENR |= (1 << 1);
@@ -55,18 +60,52 @@ static void i2c1_rcc_init(void){
 
 }
 
+
+
+static void i2c1_sda_bus_recovery(void){
+
+	// is sda low?
+	if((GPIOB_IDR & (1 << 9)) == 0){
+		// shouldn't exceed 9 pulses
+		uint8_t count = 0;
+		// pre loads pin
+		GPIOB_BSRR = (1 << 8) | (1 << 9);
+		// set it to open drain
+		GPIOB_OTYPER |= (1 << 8) | (1 << 9);
+		// clear the MODER
+		GPIOB_MODER &= ~((3 << 16) | (3 << 18));
+		// set the MODER to general output mode
+		GPIOB_MODER |= (1 << 16) | (1 << 18);
+
+		while(((GPIOB_IDR & (1 << 9)) == 0) && count < 9){
+			//smashing the scl
+			GPIOB_BSRR = (1 << 24);
+			dwt_delay_us(5);
+			GPIOB_BSRR = (1 << 8);
+			dwt_delay_us(5);
+			count++;
+		}
+
+		GPIOB_BSRR = (1 << 25);
+		dwt_delay_us(5);
+		GPIOB_BSRR = (1 << 9);
+	}
+}
+
+
 static void i2c1_gpio_init(void){
 
+	i2c1_sda_bus_recovery();
+	// clear GPIOB_MODER8-9
+	GPIOB_MODER &= ~((3 << 16) | (3 << 18));
+	// set the GPIOB_MODER8-9 to AF
+	GPIOB_MODER |= (2 << 16) | (2 << 18);
 	// set the GPIOB_OTYPER OT8-9 to open-drain
 	GPIOB_OTYPER |= (1 << 8) | (1 << 9);
 	// clear AFRH using 0000 0000
 	GPIOB_AFRH &= ~(0xFF << 0);
 	// setting AFRH to 0100 on bit 0 and 4.
 	GPIOB_AFRH |= ((4 << 0) | (4 << 4));
-	// clear GPIOB_MODER8-9
-	GPIOB_MODER &= ~((3 << 16) | (3 << 18));
-	// set the GPIOB_MODER8-9 to AF
-	GPIOB_MODER |= (2 << 16) | (2 << 18);
 
 }
 
@@ -84,6 +123,8 @@ static void i2c1_controller_mode_init(void){
 	// set TRISE to 17 or 0x11 since FREQ is 0x10 and TRISE is FREQ + 1 in Sm Mode.
 	I2C1_TRISE |= (0x11 << 0);
 }
+
+
 
 static void i2c1_reset_peripheral(void){
 
