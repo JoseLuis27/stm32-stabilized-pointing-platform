@@ -9,27 +9,28 @@
 
 #include <stdint.h>
 #include <stdio.h>
-#define RCC_AHB1ENR (*(volatile uint32_t *)0x40023830)
-#define GPIOA_MODER (*(volatile uint32_t *)0x40020000)
-#define GPIOA_BSRR (*(volatile uint32_t *)0x40020018)
-#define GPIOA_ODR (*(volatile uint32_t *)0x40020014)
-
+#include "stm32f446xx.h"
 
 
 void debug_pin_toggle(void){
 
-	if((GPIOA_ODR & (1 << 5))==0){
-		GPIOA_BSRR = (1 << 5);
+	if((GPIOA->ODR & GPIO_ODR_OD5_Msk)==0){
+		debug_pin_high();
 	}else{
-		GPIOA_BSRR = (1 << 21);
+		debug_pin_low();
 	}
 }
 
+void debug_pin_high(void){
+	GPIOA->BSRR = GPIO_BSRR_BS5;
+}
+
+void debug_pin_low(void){
+	GPIOA->BSRR = GPIO_BSRR_BR5;
+}
+
 void debug_pin_init(void){
-	// enable GPIOA clock (bit 0)
-	RCC_AHB1ENR |= (1 << 0);
-	// clear bit 11 so MODER5 ends up 01
-	GPIOA_MODER &= ~(1 << 11);
-	// set PA5 to output (MODER5=01)
-	GPIOA_MODER |= (1 << 10);
+	RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
+	GPIOA->MODER &= ~GPIO_MODER5_Msk;
+	GPIOA->MODER |= GPIO_MODER_MODER5_0;
 }
