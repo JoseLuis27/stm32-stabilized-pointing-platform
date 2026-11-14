@@ -5,59 +5,17 @@
  *      Author: joseluis
  */
 
-/* I2C1_SCL -> PB8
- * I2C1_SDA -> PB9
- *
- * alternate function number: AF4
- *
- * turn on clocks for GPIOBEN & I2C
- * RCC_AHB1ENR bit 1 for GPIOBEN
- * RCC_APB1ENR bit 21 for I2C1EN
- *
- *
- * GPIOB_MODER8 bits 16-17 MODER FOR SCL
- * GPIOB_MODER9 bits 18-19 MODER FOR SDA
- *
- *
- * GPIOB_AFRH8 bits 0-3
- * GPIOB_AFRH9 bits 4-7
- *
- * GPIOB_OTYPER bits 8-9
- */
 
 #include <stdint.h>
 #include <assert.h>
 #include "dwt.h"
-// RCC register addresses
-#define RCC_AHB1ENR (*(volatile uint32_t *) 0x40023830)
-#define RCC_APB1ENR (*(volatile uint32_t *)0x40023840)
-
-//GPIOB register addresses
-#define GPIOB_MODER (*(volatile uint32_t *) 0x40020400)
-#define GPIOB_IDR (*(volatile uint32_t *) 0x40020410)
-#define GPIOB_AFRH (*(volatile uint32_t *) 0x40020424)
-#define GPIOB_OTYPER (*(volatile uint32_t *) 0x40020404)
-#define GPIOB_BSRR (*(volatile uint32_t *) 0x40020418)
-
-
-// I2C1 register addresses
-#define I2C1_CR2 (*(volatile uint32_t *) 0x40005404)
-#define I2C1_CCR (*(volatile uint32_t *) 0x4000541C)
-#define I2C1_TRISE (*(volatile uint32_t *) 0x40005420)
-#define I2C1_CR1 (*(volatile uint32_t *) 0x40005400)
-#define I2C1_SR1 (*(volatile uint32_t *) 0x40005414)
-#define I2C1_SR2 (*(volatile uint32_t *) 0x40005418)
-#define I2C1_DR (*(volatile uint32_t *) 0x40005410)
-
-
+#include "stm32f446xx.h"
 
 
 static void i2c1_rcc_init(void){
-	// turn on the GPIOB clock
-	RCC_AHB1ENR |= (1 << 1);
-	// turn on the I2C1 clock
-	RCC_APB1ENR |= (1 << 21);
-
+	// turn on clocks
+	RCC->AHB1ENR |= RCC_AHB1ENR_GPIOBEN;
+	RCC->APB1ENR |= RCC_APB1ENR_I2C1EN;
 }
 
 
@@ -65,31 +23,31 @@ static void i2c1_rcc_init(void){
 static void i2c1_sda_bus_recovery(void){
 
 	// is sda low?
-	if((GPIOB_IDR & (1 << 9)) == 0){
+	if((GPIOB->IDR & GPIO_IDR_ID9) == 0){
 		// shouldn't exceed 9 pulses
 		uint8_t count = 0;
 		// pre loads pin
-		GPIOB_BSRR = (1 << 8) | (1 << 9);
+		GPIOB->BSRR = GPIO_BSRR_BS8 | GPIO_BSRR_BS9;
 		// set it to open drain
-		GPIOB_OTYPER |= (1 << 8) | (1 << 9);
+		GPIOB->OTYPER |= GPIO_OTYPER_OT8 | GPIO_OTYPER_OT9;
 		// clear the MODER
-		GPIOB_MODER &= ~((3 << 16) | (3 << 18));
+		GPIOB->MODER &= ~(GPIO_MODER_MODER8_Msk | GPIO_MODER_MODER9_Msk);
 		// set the MODER to general output mode
-		GPIOB_MODER |= (1 << 16) | (1 << 18);
+		GPIOB->MODER |= GPIO_MODER_MODER8_0 | GPIO_MODER_MODER9_0;
 
-		while(((GPIOB_IDR & (1 << 9)) == 0) && count < 9){
+		while(((GPIOB->IDR & GPIO_IDR_ID9) == 0) && count < 9){
 			//smashing the scl
-			GPIOB_BSRR = (1 << 24);
+			GPIOB->BSRR = GPIO_BSRR_BR8;
 			dwt_delay_us(5);
-			GPIOB_BSRR = (1 << 8);
+			GPIOB->BSRR = GPIO_BSRR_BS8;
 			dwt_delay_us(5);
 			count++;
 		}
 
-		GPIOB_BSRR = (1 << 25);
+		GPIOB->BSRR = GPIO_BSRR_BR9;
 		dwt_delay_us(5);
-		GPIOB_BSRR = (1 << 9);
-	}
+		GPIOB->BSRR = GPIO_BSRR_BS9;
+	};
 }
 
 
@@ -97,107 +55,107 @@ static void i2c1_gpio_init(void){
 
 	i2c1_sda_bus_recovery();
 	// clear GPIOB_MODER8-9
-	GPIOB_MODER &= ~((3 << 16) | (3 << 18));
+	GPIOB->MODER &= ~(GPIO_MODER_MODER8_Msk | GPIO_MODER_MODER9_Msk);
 	// set the GPIOB_MODER8-9 to AF
-	GPIOB_MODER |= (2 << 16) | (2 << 18);
-	// set the GPIOB_OTYPER OT8-9 to open-drain
-	GPIOB_OTYPER |= (1 << 8) | (1 << 9);
-	// clear AFRH using 0000 0000
-	GPIOB_AFRH &= ~(0xFF << 0);
-	// setting AFRH to 0100 on bit 0 and 4.
-	GPIOB_AFRH |= ((4 << 0) | (4 << 4));
+	GPIOB->MODER |= GPIO_MODER_MODER8_1 | GPIO_MODER_MODER9_1;
+	// set the GPIOB_OTYPER to open-drain
+	GPIOB->OTYPER |= GPIO_OTYPER_OT8 | GPIO_OTYPER_OT9;
+	//clear AFRH
+	GPIOB->AFR[1] &= ~(GPIO_AFRH_AFSEL8_Msk | GPIO_AFRH_AFSEL9_Msk);
+	// setting PB8 and PB9 to AF4 (I2C1)
+	GPIOB->AFR[1] |= (4 << GPIO_AFRH_AFSEL8_Pos) | (4 << GPIO_AFRH_AFSEL9_Pos);
 
 }
 
 static void i2c1_controller_mode_init(void){
-	// clear FREQ to 00 0000
-	I2C1_CR2 &= ~(0x3F << 0);
+	// clear FREQ
+	I2C1->CR2 &= ~I2C_CR2_FREQ_Msk;
 	// set FREQ to 16 MHz
-	I2C1_CR2 |= (0x10 << 0);
-	// clear CCR to 0000 0000 0000 and also making sure F/S is at 0 for slow mode.
-	I2C1_CCR &= ~((0xFFF << 0) | (1 << 15));
+	I2C1->CR2 |= (0x10 << I2C_CR2_FREQ_Pos);
+	// clear CCR and also making sure F/S is at 0 for slow mode.
+	I2C1->CCR &= ~(I2C_CCR_CCR_Msk | I2C_CCR_FS);
 	// set CCR to 80 or 0x50 as calculated for 100kHz SCL freq.
-	I2C1_CCR |= (0x50 << 0);
-	// clear TRISE to 00 0000
-	I2C1_TRISE &= ~(0x3F << 0);
+	I2C1->CCR |= (0x50 << I2C_CCR_CCR_Pos);
+	// clear TRISE
+	I2C1->TRISE &= ~I2C_TRISE_TRISE_Msk;
 	// set TRISE to 17 or 0x11 since FREQ is 0x10 and TRISE is FREQ + 1 in Sm Mode.
-	I2C1_TRISE |= (0x11 << 0);
+	I2C1->TRISE |= (0x11 << I2C_TRISE_TRISE_Pos);
 }
+
 
 
 
 static void i2c1_reset_peripheral(void){
 
-	uint8_t is_idle_high = (GPIOB_IDR & ((1 << 8) | (1 << 9))) == ((1 << 8) | (1 << 9));
-	uint8_t is_busy = ((I2C1_SR2 & (1 << 1)) == (1 << 1));
+	uint8_t is_idle_high = (GPIOB->IDR & (GPIO_IDR_ID8 | GPIO_IDR_ID9)) == (GPIO_IDR_ID8 | GPIO_IDR_ID9);
+	uint8_t is_busy = (I2C1->SR2 & I2C_SR2_BUSY) == I2C_SR2_BUSY;
 
 	if(is_idle_high && is_busy){
 		// turn on SWRST
-		I2C1_CR1 |= (1 << 15);
+		I2C1->CR1 |= I2C_CR1_SWRST;
 		// turn off SWRST
-		I2C1_CR1 &= ~(1 << 15);
+		I2C1->CR1 &= ~I2C_CR1_SWRST;
 	}
 
 }
 
 
 static void i2c1_enable_peripheral(void){
-	I2C1_CR1 |= (1 << 0);
+	I2C1->CR1 |= I2C_CR1_PE;
 }
 
 
 static void i2c1_start_sent(void){
-	// set the START condition
-	I2C1_CR1 |= (1 << 8);
-	//polling SB until bit is set
-	while((I2C1_SR1 & (1 << 0)) == 0){}
+    // set the START condition
+    I2C1->CR1 |= I2C_CR1_START;
+    //polling SB until bit is set
+    while((I2C1->SR1 & I2C_SR1_SB) == 0){}
 }
 
 static void i2c1_address_acked(uint8_t target_address){
-	// write the target address to DR
-	I2C1_DR = target_address;
-	// polling ADDR until bit is set
-	while((I2C1_SR1 & (1 << 1)) == 0){}
+    // write the target address to DR
+    I2C1->DR = target_address;
+    // polling ADDR until bit is set
+    while((I2C1->SR1 & I2C_SR1_ADDR) == 0){}
 }
 
 static void i2c1_addr_flag_cleared(void){
-	// read SR2 to clear ADDR flag
-	I2C1_SR2;
+    // read SR2 to clear ADDR flag
+    (void)I2C1->SR2;
 }
 
 static void i2c1_btf_bit_set(void){
-	//polling until BTF bit is set
-	while((I2C1_SR1 & (1 << 2)) == 0){}
-
+    //polling until BTF bit is set
+    while((I2C1->SR1 & I2C_SR1_BTF) == 0){}
 }
 
 static void i2c1_stop_bit_enabled(void){
-	// set STOP
-	I2C1_CR1 |= (1 << 9);
+    // set STOP
+    I2C1->CR1 |= I2C_CR1_STOP;
 }
 
 static void i2c1_stop_bit_cleared(void){
-	// polling until STOP hardware clears stop
-	while ((I2C1_CR1 & (1 << 9)) != 0){}
+    // polling until STOP hardware clears stop
+    while((I2C1->CR1 & I2C_CR1_STOP) != 0){}
 }
 
 static void i2c1_ack_bit_enabled(void){
-	// ACK bit is enabled (MAK)
-	I2C1_CR1 |= (1 << 10);
+    // ACK bit is enabled (MAK)
+    I2C1->CR1 |= I2C_CR1_ACK;
 }
 
 static void i2c1_ack_bit_disabled(void){
-	// ACK bit is cleared (NMAK)
-	I2C1_CR1 &= ~(1 << 10);
+    // ACK bit is cleared (NMAK)
+    I2C1->CR1 &= ~I2C_CR1_ACK;
 }
 
 
 static void i2c1_byte_sent(uint8_t byte){
-	// polling until TxE bit is set
-	while((I2C1_SR1 & (1 << 7)) == 0){}
-	I2C1_DR = byte;
-	//polling until BTF bit is set
-	i2c1_btf_bit_set();
+    // polling until TxE bit is set
+    while((I2C1->SR1 & I2C_SR1_TXE) == 0){}
+    I2C1->DR = byte;
+    //polling until BTF bit is set
+    i2c1_btf_bit_set();
 }
 
 static void i2c1_single_byte_stop_requested(void){
@@ -209,10 +167,10 @@ static void i2c1_single_byte_stop_requested(void){
 }
 
 static uint8_t i2c1_read_dr(void){
-	// polling RXNE until bit is set
-	while((I2C1_SR1 & (1 << 6)) == 0){}
-	// return DR value
-	return I2C1_DR;
+    // polling RXNE until bit is set
+    while((I2C1->SR1 & I2C_SR1_RXNE) == 0){}
+    // return DR value
+    return I2C1->DR;
 }
 
 
